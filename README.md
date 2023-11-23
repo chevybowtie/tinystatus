@@ -20,7 +20,7 @@ Follow these steps to get your Docker container up and running:
 Clone the project repository to your local machine using:
 
 ```bash
-git clone https://github.com/username/tinystatus-container.git
+git clone https://github.com/username/tinystatus.git ./tinystatus-container/
 cd tinystatus-container
 ```
 

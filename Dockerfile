@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y nginx git cron dos2unix curl netcat ipu
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Clone the tinystatus-systemd repository
-# RUN git clone https://github.com/chevybowtie/tinystatus-systemd-in-container.git ${TINYSTATUS_DIR}
+# RUN git clone https://github.com/chevybowtie/tinystatus.git ${TINYSTATUS_DIR}
 
 # running locally
 COPY ./ ${TINYSTATUS_DIR}
