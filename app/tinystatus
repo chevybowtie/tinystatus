@@ -1,0 +1,210 @@
+#!/usr/bin/bash
+
+
+#   __    ___   _      ____  _   __
+#  / /`  / / \ | |\ | | |_  | | / /`_
+#  \_\_, \_\_/ |_| \| |_|   |_| \_\_/
+
+# Configuration file path
+CONFIG_FILE="/usr/bin/tinystatus-config.cfg"
+
+# Check if the configuration file exists and is readable
+if [ ! -f "$CONFIG_FILE" ] || [ ! -r "$CONFIG_FILE" ]; then
+    echo "Error: Configuration file '$CONFIG_FILE' not found or not readable."
+    exit 1
+fi
+
+# Load configurations from config.cfg
+source "$CONFIG_FILE"
+
+# create path to temp space to write probe results
+tmp="$(mktemp -d)"
+
+# Use variables from config.cfg
+title="$TITLE"
+header="$HEADER"
+timeout="$TIMEOUT"
+
+# you can pass in file names as arguments
+checkfile="${1:-$CHECKFILE}"
+incidentsfile="${2:-$INCIDENTSFILE}"
+
+failonoutage=$FAILONOUTAGE
+
+# useragent="User-Agent: Mozilla/5.0 (X11; Linux x86_64; Debian) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.88 Safari/537.36"
+useragent="$USERAGENT"
+
+
+#   ____  _     _      __   _____  _   ___   _      __
+#  | |_  | | | | |\ | / /`   | |  | | / / \ | |\ | ( (`
+#  |_|   \_\_/ |_| \| \_\_,  |_|  |_| \_\_/ |_| \| _)_)
+
+
+# check we have all the commands available to us that we may need
+command_exists(){
+    if ! command -v "${1}" >/dev/null 2>&1; then
+        echo >&2 "Error: ${1} missing. Please install it"
+        exit 1
+    fi
+}
+
+# Function to extract an element from a CSV line
+get_element(){
+    echo "${2}" | awk -v col="${1}" -F',' '{gsub(/^[ \t]+|[ \t]+$/, "", $col); print $col}'
+}
+
+# Function to perform a check based on the type (HTTP, Ping, Port)
+check(){
+    ctype="${1}"
+    host="${2}"
+    name="${3}"
+    expectedcode="${4}"
+
+    # Internet Protocol Version
+    IPv="$(echo "${ctype}" | grep -o '[46]$')"
+
+    # Perform checks based on type and capture status
+    case "${ctype}" in
+        http*)
+            statuscode="$(curl -${IPv}sSkLIo /dev/null -H "${useragent}" -m "${timeout}" -w "%{http_code}" "${host}" 2> "${tmp}/ko/${name}.error")";;
+        ping*)
+            ping -${IPv}W "${timeout}" -c 1 "${host}" >/dev/null 2>&1
+            statuscode=$?
+            [ "${statuscode}" -ne "${expectedcode}" ] && echo 'Host unreachable' > "${tmp}/ko/${name}.error";;
+        port*)
+            error="$(nc -${IPv}w "${timeout}" -zv ${host} 2>&1)"
+            statuscode=$?
+            [ "${statuscode}" -ne "${expectedcode}" ] && echo "${error}" > "${tmp}/ko/${name}.error";;
+    esac
+
+    # Write status to appropriate file
+    if [ "${statuscode:-404}" -eq "${expectedcode:-200}" ]; then
+        echo "Status code: ${statuscode}" > "${tmp}/ok/${name}.status"
+    else
+        echo "Status code: ${statuscode}" > "${tmp}/ko/${name}.status"
+    fi
+
+    # Process error messages for display
+    if [ "${statuscode}" -eq "${expectedcode}" ]; then
+        echo "Status code: ${statuscode}" > "${tmp}/ok/${name}.status"
+    else
+        echo "Status code: ${statuscode}" > "${tmp}/ko/${name}.status"
+    fi
+    if [ -s "${tmp}/ko/${name}.error" ]; then
+        sed "${tmp}/ko/${name}.error" \
+          -e 's,curl: ([0-9]*) ,,' \
+          -e 's,.*) failed: ,,' > "${tmp}/ko/${name}.status"
+    fi
+}
+
+# check for these commands
+command_exists 'curl'
+command_exists 'nc'
+command_exists 'ping'
+
+# create temporary space for each result (good, bad)
+mkdir -p "${tmp}/ok" "${tmp}/ko" || exit 1
+
+#   ___   ____   __    ___       __    ___   _      ____  _   __
+#  | |_) | |_   / /\  | | \     / /`  / / \ | |\ | | |_  | | / /`_
+#  |_| \ |_|__ /_/--\ |_|_/     \_\_, \_\_/ |_| \| |_|   |_| \_\_/
+
+# Read configuration file and perform checks
+while IFS="$(printf '\n')" read -r line; do
+    ctype="$(get_element 1 "${line}")"
+    code="$(get_element 2 "${line}")"
+    name="$(get_element 3 "${line}")"
+    host="$(get_element 4 "${line}")"
+    check "${ctype}" "${host}" "${name}" "${code}" &
+done < "${checkfile}"
+
+# Wait for all checks to complete
+wait
+
+# Start of HTML generation
+# The following section generates an HTML page displaying the status of services
+
+#   _       ___   _  _____  ____      _    _____  _      _
+#  \ \    /| |_) | |  | |  | |_      | |_|  | |  | |\/| | |
+#   \_\/\/ |_| \ |_|  |_|  |_|__     |_| |  |_|  |_|  | |_|__
+
+
+cat << EOF
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>$TITLE</title>
+    <link rel="stylesheet" type="text/css" href="status_style.css">
+</head>
+<body>
+<div class='container'>
+<h1>$HEADER</h1>
+EOF
+
+
+# Check for outages and display status
+outagenb="$(find "${tmp}/ko" -mindepth 1 | grep -c 'status$')"
+if [ "${outagenb}" -ne 0 ]; then
+    echo "<ul><li class='panel failed-bg'> &#9889; "
+    echo "${outagenb} Outage(s)"
+    echo "</li></ul>"
+else
+    echo "<ul><li class='panel success-bg'>All Systems Operational &#128077;&#127995;</li></ul>"
+fi
+
+
+# List individual service statuses
+cat << EOF
+<h1>Services</h1>
+<ul>
+EOF
+for file in "${tmp}/ko/"*.status; do
+    [ -e "${file}" ] || continue
+    name="$(basename "${file}" | sed 's,.status$,,')"
+    status="$(cat "${file}")"
+    echo "<li>${name} <span class='small failed'>(${status})</span><span class='status failed'>&#10060; Disrupted</span></li>"
+done
+for file in "${tmp}/ok/"*.status; do
+    [ -e "${file}" ] || continue
+    name="$(basename "${file}" | sed 's,.status$,,')"
+    echo "<li>${name} <span class='status success'>&#10004; Operational</span></li>"
+done
+
+
+# Footer with timestamp and additional info
+cat << EOF
+</ul>
+<p class=small> Last check (UTC): $(date +%FT%T%z)  | checks occur every 5 minutes</p>
+<p class=small> See the <a href='${SLALINK}'>Service Level Agreement</a></p>
+EOF
+
+
+# Include incidents if file exists
+if [ -f "${incidentsfile}" ]; then
+    echo '<h1>Incidents</h1>'
+    if [ -s "${incidentsfile}" ]; then
+        sed 's|^\(.*\)$|<p>\1</p>|' "${incidentsfile}"
+    else
+        echo '<p>No incident reported yet ;)</p>'
+    fi
+fi
+
+
+# HTML footer
+cat <<EOF
+
+<div id="credit"><a href="${SOURCELINK}"><img src="GitHub-CLI-Official.png"></a> version ${VERSION}</div>
+</div>
+</body></html>
+EOF
+
+# Clean up temporary files
+# rm -r "$tmp" 2>/dev/null
+
+# Exit with status code based on outages
+if [ "$failonoutage" = true ]; then
+    # exit with status code of how many outages there are
+    exit "$outagenb"
+fi
+

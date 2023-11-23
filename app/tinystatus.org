@@ -1,7 +1,6 @@
 #!/usr/bin/env sh
 
 title=tinystatus
-header="Global Status"
 timeout=10
 tmp="$(mktemp -d)"
 checkfile="${1:-checks.csv}"
@@ -84,7 +83,7 @@ li { list-style: none; margin-bottom: 2px; padding: 5px; border-bottom: 1px soli
 </style></head>
 <body>
 <div class='container'>
-<h1>${header}</h1>
+<h1>Global status</h1>
 EOF
 outagenb="$(find "${tmp}/ko" -mindepth 1 | grep -c 'status$')"
 if [ "${outagenb}" -ne 0 ]; then
@@ -109,7 +108,7 @@ for file in "${tmp}/ok/"*.status; do
 done
 cat << EOF
 </ul>
-<p class=small> Last check: $(date +%FT%T%z)</p>
+<p class=small> Last check: $(date -I'seconds')</p>
 EOF
 if [ -f "${incidentsfile}" ]; then
     echo '<h1>Incidents</h1>'
