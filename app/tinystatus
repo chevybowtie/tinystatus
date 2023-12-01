@@ -84,12 +84,7 @@ check(){
         echo "Status code: ${statuscode}" > "${tmp}/ko/${name}.status"
     fi
 
-    # Process error messages for display
-    if [ "${statuscode}" -eq "${expectedcode}" ]; then
-        echo "Status code: ${statuscode}" > "${tmp}/ok/${name}.status"
-    else
-        echo "Status code: ${statuscode}" > "${tmp}/ko/${name}.status"
-    fi
+    # take error messages and populate the service ko file with a message
     if [ -s "${tmp}/ko/${name}.error" ]; then
         sed "${tmp}/ko/${name}.error" \
           -e 's,curl: ([0-9]*) ,,' \
