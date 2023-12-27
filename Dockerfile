@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y nginx git cron dos2unix curl netcat ipu
 
 # running locally
 COPY ./ ${TINYSTATUS_DIR}
-RUN dos2unix ./app
+RUN dos2unix ${TINYSTATUS_DIR}/app/*
 
 # ███████╗ ██████╗██████╗ ██╗██████╗ ████████╗███████╗
 # ██╔════╝██╔════╝██╔══██╗██║██╔══██╗╚══██╔══╝██╔════╝
